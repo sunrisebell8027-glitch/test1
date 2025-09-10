@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>초등 4학년 체육 평가문항 통합 정보</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+        /* 스크롤바 디자인 */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background-color: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: #888;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: #555;
+        }
+        .achievement-card.active {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border-color: #3b82f6; /* Tailwind's blue-500 */
+        }
+        #assessment-details {
+            transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+        }
+        .details-hidden {
+            opacity: 0;
+            transform: translateY(20px);
+            height: 0;
+            overflow: hidden;
+        }
+        .details-visible {
+            opacity: 1;
+            transform: translateY(0);
+            height: auto;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-10">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900">초등학교 4학년 체육 평가문항</h1>
+            <p class="text-lg text-gray-600 mt-2">출판사별 지도서 기반 통합 정보 시스템</p>
+        </header>
+
+        <main>
+            <!-- 성취기준 선택 섹션 -->
+            <section id="achievement-standards" class="mb-12">
+                <h2 class="text-2xl font-semibold mb-6 text-gray-800 flex items-center"><i class="fas fa-bullseye mr-3 text-blue-500"></i>성취기준 선택</h2>
+                <div id="standards-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- 성취기준 카드가 동적으로 여기에 삽입됩니다. -->
+                </div>
+            </section>
+
+            <!-- 평가문항 안내 섹션 -->
+            <section id="assessment-details" class="details-hidden">
+                 <h2 class="text-2xl font-semibold mb-6 text-gray-800 flex items-center"><i class="fas fa-tasks mr-3 text-green-500"></i>지도서 내용 및 평가 문항</h2>
+                 <div id="details-content" class="bg-white p-6 rounded-lg shadow-lg">
+                    <!-- 선택된 성취기준에 대한 내용이 여기에 표시됩니다. -->
+                 </div>
+            </section>
+             <div id="initial-prompt" class="text-center py-12 bg-white rounded-lg shadow-md">
+                <i class="fas fa-hand-pointer text-4xl text-gray-400 mb-4"></i>
+                <p class="text-xl text-gray-600">위의 성취기준을 선택하여 평가문항을 확인하세요.</p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const assessmentData = [
+            {
+                id: '4체01-01',
+                standard: '[4체01-01] 운동과 체력의 의미를 이해하고 관계를 파악한다.',
+                icon: 'fa-heart-pulse',
+                publishers: [
+                    {
+                        name: '금성출판사',
+                        content: '운동, 체력, 건강의 의미를 이해하고 그 관계를 파악하는 활동에 중점을 둡니다. 학생들이 운동이 단순히 신체 활동을 넘어 건강한 삶의 필수 요소임을 깨닫도록 지도합니다.',
+                        items: [
+                            { type: '질의응답', question: '운동과 체력은 어떤 관계가 있는지 설명해 보세요.' },
+                            { type: '관찰평가', question: '운동과 체력, 건강의 관계를 이해하고 수업에 적극적으로 참여하는가?' }
+                        ]
+                    },
+                    {
+                        name: '비상교육',
+                        content: '운동, 체력, 건강의 의미를 이해하고 관계를 아는 것을 학습 목표로 제시합니다. 학생들이 자신에게 알맞은 운동을 선택하고 실천하는 기초를 마련합니다.',
+                        items: [
+                            { type: '서술형 평가', question: '이 단원을 통해 운동, 체력, 건강의 관계에 대해 새롭게 알게 된 점을 서술하시오.' },
+                        ]
+                    }
+                ]
+            },
+            {
+                id: '4체01-02',
+                standard: '[4체01-02] 기본 체력운동의 방법과 절차를 익히며 자신의 수준에 맞는 운동을 시도한다.',
+                icon: 'fa-person-running',
+                publishers: [
+                    {
+                        name: '금성출판사',
+                        content: '오래 달리거나 걷기, 왕복달리기, 팔굽혀 펴기, 윗몸 말아 올리기 등 기본 체력 운동의 정확한 방법과 절차를 지도합니다. 게임 형식의 활동을 통해 학생들이 즐겁게 참여하도록 유도합니다.',
+                        items: [
+                            { type: '수행평가', question: '오래 달리거나 걷기 활동에 적극적으로 참여하며, 자신의 체력 수준에 맞게 꾸준히 실천하고 기록할 수 있는가?' },
+                            { type: '수행평가', question: '팔굽혀 펴기를 정확한 동작으로 수행하는가?' },
+                            { type: '관찰평가', question: '친구와 협력하여 ‘솜털 공 배달하기’ 게임에 즐겁게 참여하는가?' }
+                        ]
+                    },
+                    {
+                        name: '천재교육',
+                        content: '맨손 체조, 줄넘기, 계단 오르기 등 생활 속에서 쉽게 할 수 있는 운동을 중심으로 지도합니다. 특히 맨손체조는 도구 없이 신체 여러 부위를 움직이는 운동임을 강조합니다.',
+                        items: [
+                            { type: '수행평가', question: '다양한 방법으로 줄넘기 동작을 익혀 생활 속에서 실천할 수 있는가?' },
+                            { type: '관찰평가', question: '맨손 체조 활동 후 몸의 변화를 설명할 수 있는가?' }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: '4체01-03',
+                standard: '[4체01-03] 운동과 건강의 의미를 이해하고 관계를 파악한다.',
+                icon: 'fa-dumbbell',
+                publishers: [
+                     {
+                        name: '천재교육',
+                        content: '운동이 건강에 미치는 긍정적 영향을 신체적, 정신적, 사회적 측면에서 탐색합니다. 이를 통해 운동의 필요성을 내면화하고 꾸준한 운동 습관 형성의 중요성을 강조합니다.',
+                        items: [
+                            { type: '서술형 평가', question: '운동이 우리 건강에 주는 좋은 영향(신체적, 정신적, 사회적)에는 무엇이 있는지 설명해 보세요.' },
+                            { type: '자기평가', question: '자신의 운동 습관을 확인하고, 건강 증진을 위해 필요한 부분을 스스로 계획하였는가?' }
+                        ]
+                    },
+                    {
+                        name: '금성출판사',
+                        content: '운동이 건강 유지에 미치는 영향을 알고, 생활 속에서 할 수 있는 다양한 운동(맨손체조, 산책, 줄넘기 등)을 체험하며 운동 습관 실천 의지를 기르도록 합니다.',
+                        items: [
+                            { type: '구술평가', question: '운동과 건강의 관계를 자신의 경험과 관련지어 설명할 수 있는가?' },
+                            { type: '실기평가', question: '배운 맨손체조 동작을 음악에 맞춰 수행할 수 있는가?' }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: '4체01-04',
+                standard: '[4체01-04] 건강을 위한 바른 생활 습관을 이해하고 생활 속에서 규칙적으로 실천한다.',
+                icon: 'fa-apple-whole',
+                publishers: [
+                    {
+                        name: '비상교육',
+                        content: '바른 자세, 체중 관리, 식습관, 위생, 마음 건강 등 포괄적인 건강 생활 습관을 지도합니다. 만화 형식의 자료를 통해 학생들이 흥미를 갖고 자신의 생활 습관을 되돌아보도록 합니다.',
+                        items: [
+                            { type: '체크리스트', question: '나의 식습관(규칙적인 식사, 골고루 먹기 등)을 스스로 점검하고 평가하였는가?' },
+                            { type: '서술형 평가', question: '바르지 않은 자세로 계속 생활하면 우리 몸에 어떤 문제가 생길 수 있는지 설명해 보세요.' },
+                             { type: '실천평가', question: '‘2주 실천 소책자’를 만들어 건강한 생활 습관을 꾸준히 실천하였는가?' }
+                        ]
+                    },
+                    {
+                        name: '천재교육',
+                        content: '신체적, 정신적, 사회적 건강의 조화를 강조하며, 건강한 생활 습관이 세 측면에 모두 긍정적 영향을 미침을 이해시킵니다. 올바른 자세, 위생, 식습관, 정서 관리 등을 다룹니다.',
+                        items: [
+                            { type: '선 긋기 평가', question: '올바른 생활 습관이 신체적, 정신적, 사회적 건강에 주는 좋은 점을 바르게 연결하였는가?' },
+                            { type: '관찰평가', question: '깨끗한 생활 습관을 꾸준히 실천하려는 태도를 보이는가?' }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: '4체01-05',
+                standard: '[4체01-05] 자신의 신체적 특징을 긍정적으로 인식하고 운동 계획을 세워 안전하게 활동한다.',
+                icon: 'fa-clipboard-check',
+                publishers: [
+                    {
+                        name: '금성출판사',
+                        content: '학생들이 자신의 체격(키, 몸무게)과 체력 수준(50m 달리기, 윗몸 말아 올리기 등)을 측정하고 객관적으로 파악하도록 돕습니다. 이를 바탕으로 자신에게 부족한 체력을 보완할 수 있는 운동 계획을 세우고 실천하도록 지도합니다.',
+                        items: [
+                            { type: '자기평가', question: '나의 체격과 체력 수준을 정확히 알고, 내가 잘하는 것과 부족한 것을 스스로 평가하여 설명할 수 있는가?' },
+                            { type: '계획서 평가', question: '학생 건강 체력 평가(PAPS) 결과를 바탕으로, 자신의 체력에 알맞은 운동 계획을 구체적으로 세웠는가?' }
+                        ]
+                    },
+                     {
+                        name: '천재교육',
+                        content: '운동 계획을 세우고 꾸준히 실천하여 건강한 생활 습관을 기르는 활동에 초점을 맞춥니다. 실천 가능한 계획을 세우는 방법(운동 종류, 시간, 장소, 강도 등)을 구체적으로 안내합니다.',
+                        items: [
+                            { type: '실천평가', question: '자신에게 맞는 운동 계획을 세우고, 2주 동안 꾸준히 실천하며 변화를 기록하였는가?' },
+                            { type: '동료평가', question: '친구의 운동 계획을 보고 격려하며 긍정적인 피드백을 제공하였는가?' }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: '4체01-06',
+                standard: '[4체01-06] 운동과 건강한 생활 습관 형성에 관심을 갖고 적극적으로 실천한다.',
+                icon: 'fa-star',
+                publishers: [
+                    {
+                        name: '금성출판사',
+                        content: '학급 내 운동 동아리를 만들어 함께 목표를 정하고 꾸준히 참여함으로써 운동을 습관화하도록 격려합니다. 포스터 제작, 동아리 소개 등 협력 활동을 통해 운동에 대한 긍정적 태도를 형성합니다.',
+                        items: [
+                            { type: '관찰평가', question: '운동 동아리 활동에 적극적인 태도로 꾸준히 참여하는가?' },
+                            { type: '포트폴리오', question: '우리 반 운동 동아리를 소개하는 포스터를 협력하여 창의적으로 제작하였는가?' }
+                        ]
+                    },
+                    {
+                        name: '비상교육',
+                        content: '운동과 건강한 생활 습관을 꾸준히 실천하는 태도의 중요성을 강조합니다. 운동 계획을 세우고 실천하는 전 과정을 통해 자기 관리 능력을 기르도록 합니다.',
+                        items: [
+                            { type: '태도평가', question: '운동 계획을 세우고 실천할 때 꾸준히 하려는 마음을 가졌는가?' },
+                            { type: '성찰일지', question: '운동 일지를 작성하며 자신의 실천 과정을 되돌아보고 개선하려는 노력을 하였는가?' }
+                        ]
+                    }
+                ]
+            }
+        ];
+
+        const standardsGrid = document.getElementById('standards-grid');
+        const assessmentDetails = document.getElementById('assessment-details');
+        const detailsContent = document.getElementById('details-content');
+        const initialPrompt = document.getElementById('initial-prompt');
+
+        // 성취기준 카드 생성
+        assessmentData.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'achievement-card bg-white p-6 rounded-lg shadow-md hover:shadow-xl hover:border-blue-500 border-2 border-transparent cursor-pointer transition-all duration-300';
+            card.dataset.id = item.id;
+            card.innerHTML = `
+                <div class="flex items-start">
+                    <i class="fas ${item.icon} text-2xl text-white bg-blue-500 rounded-full w-12 h-12 flex items-center justify-center mr-4"></i>
+                    <div>
+                        <h3 class="font-bold text-gray-600 text-sm">${item.id}</h3>
+                        <p class="font-semibold text-gray-800 mt-1">${item.standard}</p>
+                    </div>
+                </div>
+            `;
+            standardsGrid.appendChild(card);
+        });
+
+        // 성취기준 클릭 이벤트 리스너
+        standardsGrid.addEventListener('click', (e) => {
+            const card = e.target.closest('.achievement-card');
+            if (card) {
+                // 기존 active 클래스 제거
+                document.querySelectorAll('.achievement-card').forEach(c => c.classList.remove('active'));
+                // 클릭된 카드에 active 클래스 추가
+                card.classList.add('active');
+                
+                initialPrompt.classList.add('hidden');
+
+                const standardId = card.dataset.id;
+                const data = assessmentData.find(item => item.id === standardId);
+                displayAssessmentDetails(data);
+            }
+        });
+
+        // 평가 문항 내용 표시 함수
+        function displayAssessmentDetails(data) {
+            let contentHtml = `<h3 class="text-xl font-bold mb-4 text-blue-600">${data.id}</h3><p class="text-lg font-semibold mb-6">${data.standard}</p>`;
+            
+            data.publishers.forEach(publisher => {
+                contentHtml += `
+                    <div class="mb-8 p-4 border-l-4 border-gray-200 bg-gray-50 rounded-r-lg">
+                        <h4 class="text-lg font-bold text-gray-700 mb-3 flex items-center"><i class="fas fa-book-open mr-2 text-green-600"></i>${publisher.name} 지도서 내용</h4>
+                        <p class="text-gray-600 mb-4">${publisher.content}</p>
+                        <h5 class="font-semibold text-gray-700 mb-3">평가 문항 예시</h5>
+                        <ul class="list-none space-y-2">
+                            ${publisher.items.map(item => `
+                                <li class="flex items-start">
+                                    <span class="inline-block bg-blue-100 text-blue-800 text-xs font-semibold mr-3 px-2.5 py-1 rounded-full">${item.type}</span>
+                                    <span class="text-gray-700">${item.question}</span>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    </div>
+                `;
+            });
+
+            detailsContent.innerHTML = contentHtml;
+            assessmentDetails.classList.remove('details-hidden');
+            assessmentDetails.classList.add('details-visible');
+        }
+
+    </script>
+</body>
+</html>
