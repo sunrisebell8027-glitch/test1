@@ -36,6 +36,11 @@ STYLE = {
     "passage_body_para": 22,    # 지문 본문 문단속성(양쪽 정렬)
     "passage_body_char": 10,    # 지문 본문 글자속성
     "answer_box_height": 12000, # 답안 박스 기본 높이(HWPUNIT)
+    # 전역 서식
+    "font_face": "한컴산뜻돋움",   # 모든 폰트 슬롯을 이 글꼴로 통일
+    "title_height": 1700,        # 제목 글자 크기(=17pt, 1pt=100). 굵게는 골든샘플 유지
+    # 박스(셀) 안쪽 여백(HWPUNIT). 1mm≈283
+    "cell_margin": {"left": 540, "right": 540, "top": 340, "bottom": 340},
 }
 
 
@@ -68,6 +73,33 @@ def clear_body(doc: HwpxDocument) -> None:
         doc.remove_paragraph(p)
 
 
+def apply_global_styles(doc: HwpxDocument) -> None:
+    """문서 header.xml을 편집해 전체 글꼴 통일 + 제목 글자 크기를 설정한다."""
+    pkg = doc.package
+    root = pkg.get_xml(pkg.HEADER_PATH)
+    for el in root.iter():
+        tag = el.tag.split("}")[-1]
+        if tag == "font":
+            el.set("face", STYLE["font_face"])
+        elif tag == "charPr" and el.get("id") == str(STYLE["title"]):
+            el.set("height", str(STYLE["title_height"]))
+    pkg.set_xml(pkg.HEADER_PATH, root)
+
+
+def set_cell_margin(cell) -> None:
+    """셀 안쪽 여백을 STYLE['cell_margin'] 값으로 설정한다."""
+    tc = cell.element
+    tc.set("hasMargin", "1")
+    m = STYLE["cell_margin"]
+    for child in tc:
+        if child.tag.split("}")[-1] == "cellMargin":
+            child.set("left", str(m["left"]))
+            child.set("right", str(m["right"]))
+            child.set("top", str(m["top"]))
+            child.set("bottom", str(m["bottom"]))
+            return
+
+
 def render_passage(doc: HwpxDocument, passage: dict) -> None:
     """지문을 1x1 박스에 제목(가운데)+본문/각주/출처(양쪽정렬) 순으로 넣는다."""
     lines: list[tuple[str, int, int]] = []
@@ -90,15 +122,18 @@ def render_passage(doc: HwpxDocument, passage: dict) -> None:
     p0.element.set("paraPrIDRef", str(first_para))
     for text, para, char in lines[1:]:
         cell.add_paragraph(text, para_pr_id_ref=para, char_pr_id_ref=char)
+    set_cell_margin(cell)
 
 
 def render_answer_box(doc: HwpxDocument) -> None:
-    doc.add_table(
+    table = doc.add_table(
         1, 1,
         width=STYLE["box_width"],
         height=STYLE["answer_box_height"],
         border_fill_id_ref=STYLE["box_border"],
-    ).set_cell_text(0, 0, "")
+    )
+    table.set_cell_text(0, 0, "")
+    set_cell_margin(table.cell(0, 0))
 
 
 def render(doc: HwpxDocument, data: dict) -> None:
@@ -135,6 +170,7 @@ def main() -> None:
     doc = HwpxDocument.open(str(donor_path))
     clear_body(doc)
     render(doc, data)
+    apply_global_styles(doc)
     doc.save_to_path(str(out_path))
 
     HwpxDocument.open(str(out_path)).validate()
