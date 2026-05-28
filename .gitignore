@@ -3,3 +3,6 @@
 
 # 변환 중간 산출물
 notion_schema.json
+
+# 파이썬 캐시
+__pycache__/
