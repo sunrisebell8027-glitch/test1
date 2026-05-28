@@ -39,6 +39,7 @@ STYLE = {
     # 전역 서식
     "font_face": "한컴산뜻돋움",   # 모든 폰트 슬롯을 이 글꼴로 통일
     "title_height": 1700,        # 제목 글자 크기(=17pt, 1pt=100). 굵게는 골든샘플 유지
+    "passage_title_height": 1200,  # 지문 박스 제목 크기(=12pt). 본문 11pt보다 1pt 큼
     # 박스(셀) 안쪽 여백(HWPUNIT). 1mm≈283
     "cell_margin": {"left": 540, "right": 540, "top": 340, "bottom": 340},
 }
@@ -77,12 +78,16 @@ def apply_global_styles(doc: HwpxDocument) -> None:
     """문서 header.xml을 편집해 전체 글꼴 통일 + 제목 글자 크기를 설정한다."""
     pkg = doc.package
     root = pkg.get_xml(pkg.HEADER_PATH)
+    heights = {
+        str(STYLE["title"]): STYLE["title_height"],
+        str(STYLE["passage_title_char"]): STYLE["passage_title_height"],
+    }
     for el in root.iter():
         tag = el.tag.split("}")[-1]
         if tag == "font":
             el.set("face", STYLE["font_face"])
-        elif tag == "charPr" and el.get("id") == str(STYLE["title"]):
-            el.set("height", str(STYLE["title_height"]))
+        elif tag == "charPr" and el.get("id") in heights:
+            el.set("height", str(heights[el.get("id")]))
     pkg.set_xml(pkg.HEADER_PATH, root)
 
 
