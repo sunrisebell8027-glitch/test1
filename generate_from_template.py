@@ -9,6 +9,41 @@
 - 박스(지문/답안) : 1x1 표, 너비를 본문폭(52160)에 맞춤, 원본 셀 테두리 재사용
 - 정렬/글꼴 : 지문 제목=가운데(para23,char14), 본문=양쪽정렬(para22,char10)
 
+────────────────────────────────────────────────────────────────────
+데이터 구조(스키마) — 노션 등에서 추출한 학습지 내용을 이 형태로 만든다.
+
+{
+  "header": { "left": str, "right": str },        # 머릿말 좌/우 (선택)
+  "title": str,                                    # 제목 (필수)
+  "learning_goal": str,                            # 학습 목표 (선택)
+  "activities": [                                  # 활동 목록 (1개 이상)
+    {
+      "label": str,            # "활동1"
+      "stage": str,            # "HOP" | "STEP" | "JUMP"
+      "instruction": str,      # 활동 지시문
+      "passages": [ <지문> ],   # 박스 지문 0개 이상 (선택)
+      "questions": [ <문항> ]   # 문항 0개 이상
+    }
+  ]
+}
+
+<지문> = {
+  "title": str | null,         # 지문 제목 (가운데, 본문+1pt)
+  "body": [str, ...],          # 문단 목록
+  "images": [ {"path": str, "caption": str} ],  # 이미지(캡션은 가운데). 삽입은 4단계
+  "footnotes": [str, ...],     # 각주. "• " 접두가 자동으로 붙음
+  "source": str | null         # 출처/안내 (지문 마지막 줄)
+}
+
+<문항> = {
+  "id": str,                   # "Q1"
+  "text": str,                 # 질문 내용
+  "box": <지문> | null,         # 문항에 딸린 지문 박스 (예: Q7 고쳐쓰기)
+  "answer_box": bool,          # 빈 답안 박스 표시 여부
+  "answer_box_height": int|null# 답안 박스 높이(HWPUNIT, 선택)
+}
+────────────────────────────────────────────────────────────────────
+
 실행:
     python3 generate_from_template.py                       # golden_schema.json -> worksheet_styled.hwpx
     python3 generate_from_template.py data.json out.hwpx    # 입력/출력 지정
@@ -43,6 +78,60 @@ STYLE = {
     # 박스(셀) 안쪽 여백(HWPUNIT). 1mm≈283
     "cell_margin": {"left": 540, "right": 540, "top": 340, "bottom": 340},
 }
+
+
+def _validate_passage(passage: object, loc: str, errors: list[str]) -> None:
+    if not isinstance(passage, dict):
+        errors.append(f"{loc}: 객체(dict)여야 합니다")
+        return
+    body = passage.get("body", [])
+    if not isinstance(body, list) or any(not isinstance(x, str) for x in body):
+        errors.append(f"{loc}.body: 문자열 배열이어야 합니다")
+    for k in ("footnotes",):
+        v = passage.get(k, [])
+        if not isinstance(v, list) or any(not isinstance(x, str) for x in v):
+            errors.append(f"{loc}.{k}: 문자열 배열이어야 합니다")
+    for j, img in enumerate(passage.get("images", []) or []):
+        if not isinstance(img, dict):
+            errors.append(f"{loc}.images[{j}]: 객체여야 합니다")
+
+
+def validate_data(data: object) -> None:
+    """스키마에 맞는지 검사하고, 어긋나면 위치를 짚어 ValueError를 던진다."""
+    errors: list[str] = []
+    if not isinstance(data, dict):
+        raise ValueError("최상위 데이터는 객체(dict)여야 합니다")
+    if not data.get("title"):
+        errors.append("title: 제목이 필요합니다")
+
+    activities = data.get("activities")
+    if not isinstance(activities, list) or not activities:
+        errors.append("activities: 활동이 1개 이상 필요합니다")
+    else:
+        for i, act in enumerate(activities):
+            loc = f"activities[{i}]"
+            if not isinstance(act, dict):
+                errors.append(f"{loc}: 객체여야 합니다")
+                continue
+            for key in ("label", "stage", "instruction"):
+                if not act.get(key):
+                    errors.append(f"{loc}.{key}: 값이 필요합니다")
+            for j, p in enumerate(act.get("passages", []) or []):
+                _validate_passage(p, f"{loc}.passages[{j}]", errors)
+            for j, q in enumerate(act.get("questions", []) or []):
+                ql = f"{loc}.questions[{j}]"
+                if not isinstance(q, dict):
+                    errors.append(f"{ql}: 객체여야 합니다")
+                    continue
+                if not q.get("id"):
+                    errors.append(f"{ql}.id: 값이 필요합니다 (예: 'Q1')")
+                if "text" not in q:
+                    errors.append(f"{ql}.text: 값이 필요합니다")
+                if q.get("box"):
+                    _validate_passage(q["box"], f"{ql}.box", errors)
+
+    if errors:
+        raise ValueError("데이터 구조 오류:\n - " + "\n - ".join(errors))
 
 
 def _wlen(s: str) -> int:
@@ -112,6 +201,11 @@ def render_passage(doc: HwpxDocument, passage: dict) -> None:
         lines.append((passage["title"], STYLE["passage_title_para"], STYLE["passage_title_char"]))
     for body in passage.get("body", []):
         lines.append((body, STYLE["passage_body_para"], STYLE["passage_body_char"]))
+    # 이미지 캡션(가운데). 실제 이미지 삽입은 4단계에서 처리.
+    for img in passage.get("images", []) or []:
+        caption = img.get("caption")
+        if caption:
+            lines.append((caption, STYLE["passage_title_para"], STYLE["passage_body_char"]))
     for fn in passage.get("footnotes", []):
         lines.append(("• " + fn, STYLE["passage_body_para"], STYLE["passage_body_char"]))
     if passage.get("source"):
@@ -133,11 +227,11 @@ def render_passage(doc: HwpxDocument, passage: dict) -> None:
     set_cell_margin(cell)
 
 
-def render_answer_box(doc: HwpxDocument) -> None:
+def render_answer_box(doc: HwpxDocument, height: int | None = None) -> None:
     table = doc.add_table(
         1, 1,
         width=STYLE["box_width"],
-        height=STYLE["answer_box_height"],
+        height=height or STYLE["answer_box_height"],
         border_fill_id_ref=STYLE["box_border"],
     )
     table.set_cell_text(0, 0, "")
@@ -163,8 +257,10 @@ def render(doc: HwpxDocument, data: dict) -> None:
 
         for q in act.get("questions", []):
             doc.add_paragraph(f"{q.get('id', '')}. {q.get('text', '')}", char_pr_id_ref=STYLE["question"])
+            if q.get("box"):
+                render_passage(doc, q["box"])
             if q.get("answer_box"):
-                render_answer_box(doc)
+                render_answer_box(doc, q.get("answer_box_height"))
         doc.add_paragraph("")
 
 
@@ -174,6 +270,7 @@ def main() -> None:
     donor_path = Path(sys.argv[3]) if len(sys.argv) > 3 else Path("golden_sample.hwpx")
 
     data = json.loads(in_path.read_text(encoding="utf-8"))
+    validate_data(data)
 
     doc = HwpxDocument.open(str(donor_path))
     clear_body(doc)
