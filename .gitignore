@@ -1,2 +1,5 @@
 # 생성된 한글 학습지 산출물
 *.hwpx
+
+# 변환 중간 산출물
+notion_schema.json
