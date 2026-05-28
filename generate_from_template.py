@@ -1,8 +1,13 @@
 """골든샘플(.hwpx)을 '스타일 원본'으로 삼아 학습지를 재생성한다.
 
-핵심 아이디어: 새 문서를 만들면 글꼴/박스 스타일이 없으므로, 선생님이 만든
-골든샘플을 열어 본문만 비우고 같은 글자속성·박스 테두리로 새 내용을 채운다.
-=> 글꼴·여백·박스 모양이 원본과 동일하게 보존된다.
+핵심 아이디어: 새 문서를 만들면 글꼴/박스/편집용지 설정이 없으므로, 선생님이 만든
+골든샘플을 열어 본문만 비우고 같은 스타일로 새 내용을 채운다.
+
+보존/적용 항목:
+- 편집용지(여백·용지)·머릿말·꼬리말 : 첫 단락의 secPr를 그대로 보존
+- 머릿말 텍스트(과목/단원/학교/학년·반·이름) : 스키마 header 값으로 갱신
+- 박스(지문/답안) : 1x1 표, 너비를 본문폭(52160)에 맞춤, 원본 셀 테두리 재사용
+- 정렬/글꼴 : 지문 제목=가운데(para23,char14), 본문=양쪽정렬(para22,char10)
 
 실행:
     python3 generate_from_template.py                       # golden_schema.json -> worksheet_styled.hwpx
@@ -18,59 +23,97 @@ from pathlib import Path
 
 from hwpx import HwpxDocument
 
-# 골든샘플에서 추출한 디자인 토큰(글자속성 ID / 셀 테두리 ID).
-# 다른 양식을 원본으로 쓰면 이 값만 그 양식에 맞게 바꾸면 된다.
+# 골든샘플에서 추출한 디자인 토큰. 다른 양식을 원본으로 쓰면 이 값만 맞추면 된다.
 STYLE = {
-    "title": 34,        # 제목
-    "goal": 35,         # 학습 목표
-    "activity": 12,     # 활동 헤더 (HOP/STEP/JUMP)
-    "question": 9,      # 질문(Q)
-    "box_border": 4,    # 지문/답안 박스(1x1 표) 셀 테두리
+    "title": 34,          # 제목 글자속성
+    "goal": 35,           # 학습 목표 글자속성
+    "activity": 12,       # 활동 헤더(HOP/STEP/JUMP) 글자속성
+    "question": 9,        # 질문(Q) 글자속성
+    "box_border": 4,      # 지문/답안 박스(1x1 표) 셀 테두리
+    "box_width": 52160,   # 박스 너비(본문폭, HWPUNIT) = 용지폭 - 좌우여백
+    "passage_title_para": 23,   # 지문 제목 문단속성(가운데 정렬)
+    "passage_title_char": 14,   # 지문 제목 글자속성(굵게)
+    "passage_body_para": 22,    # 지문 본문 문단속성(양쪽 정렬)
+    "passage_body_char": 10,    # 지문 본문 글자속성
+    "answer_box_height": 12000, # 답안 박스 기본 높이(HWPUNIT)
 }
 
 
+def _wlen(s: str) -> int:
+    """한글 등 전각 문자는 2칸으로 세어 머릿말 좌우 간격 계산용 길이를 구한다."""
+    return sum(2 if ord(c) > 0x2E7F else 1 for c in s)
+
+
+def set_header(doc: HwpxDocument, left: str, right: str, total_width: int = 74) -> None:
+    """기존 머릿말(secPr 안)을 제자리에서 좌/우 텍스트로 갱신한다.
+
+    set_header_text()는 머릿말을 중복 생성하므로 쓰지 않고, 기존 머릿말의
+    텍스트 런만 교체한다. 좌우 배치는 원본과 동일하게 공백으로 처리한다.
+    """
+    headers = getattr(doc, "headers", None)
+    if not headers:
+        return
+    text_nodes = [n for n in headers[0].element.iter() if n.tag.endswith("}t")]
+    if not text_nodes:
+        return
+    gap = max(4, total_width - _wlen(left) - _wlen(right))
+    text_nodes[0].text = f"{left}{' ' * gap}{right}"
+    for n in text_nodes[1:]:
+        n.text = ""
+
+
 def clear_body(doc: HwpxDocument) -> None:
-    """섹션 본문을 비운다(최소 1개 단락은 남아야 하므로 마지막 하나는 유지)."""
-    for p in list(doc.paragraphs)[:-1][::-1]:
+    """본문을 비우되 첫 단락은 보존한다(편집용지·머릿말·꼬리말을 담은 secPr 앵커)."""
+    for p in list(doc.paragraphs)[1:][::-1]:
         doc.remove_paragraph(p)
 
 
-def drop_leading_blank(doc: HwpxDocument) -> None:
-    """clear_body 후 맨 위에 남은 빈 단락 제거."""
-    paras = list(doc.paragraphs)
-    if len(paras) > 1 and not (paras[0].text or "").strip():
-        doc.remove_paragraph(paras[0])
-
-
 def render_passage(doc: HwpxDocument, passage: dict) -> None:
-    """지문을 1x1 박스(표) 안에 제목+본문+각주+출처 순으로 넣는다."""
-    lines: list[str] = []
+    """지문을 1x1 박스에 제목(가운데)+본문/각주/출처(양쪽정렬) 순으로 넣는다."""
+    lines: list[tuple[str, int, int]] = []
     if passage.get("title"):
-        lines.append(passage["title"])
-    lines.extend(passage.get("body", []))
+        lines.append((passage["title"], STYLE["passage_title_para"], STYLE["passage_title_char"]))
+    for body in passage.get("body", []):
+        lines.append((body, STYLE["passage_body_para"], STYLE["passage_body_char"]))
     for fn in passage.get("footnotes", []):
-        lines.append("• " + fn)
+        lines.append(("• " + fn, STYLE["passage_body_para"], STYLE["passage_body_char"]))
     if passage.get("source"):
-        lines.append(passage["source"])
+        lines.append((passage["source"], STYLE["passage_body_para"], STYLE["passage_body_char"]))
     if not lines:
-        lines = [""]
+        lines = [("", STYLE["passage_body_para"], STYLE["passage_body_char"])]
 
-    table = doc.add_table(1, 1, border_fill_id_ref=STYLE["box_border"])
-    table.set_cell_text(0, 0, lines[0])
+    table = doc.add_table(1, 1, width=STYLE["box_width"], border_fill_id_ref=STYLE["box_border"])
     cell = table.cell(0, 0)
-    for extra in lines[1:]:
-        cell.add_paragraph(extra)
+    first_text, first_para, first_char = lines[0]
+    table.set_cell_text(0, 0, first_text)
+    p0 = cell.paragraphs[0]
+    p0.element.set("paraPrIDRef", str(first_para))
+    for text, para, char in lines[1:]:
+        cell.add_paragraph(text, para_pr_id_ref=para, char_pr_id_ref=char)
+
+
+def render_answer_box(doc: HwpxDocument) -> None:
+    doc.add_table(
+        1, 1,
+        width=STYLE["box_width"],
+        height=STYLE["answer_box_height"],
+        border_fill_id_ref=STYLE["box_border"],
+    ).set_cell_text(0, 0, "")
 
 
 def render(doc: HwpxDocument, data: dict) -> None:
+    header = data.get("header") or {}
+    if header.get("left") or header.get("right"):
+        set_header(doc, header.get("left", ""), header.get("right", ""))
+
     doc.add_paragraph(data.get("title", ""), char_pr_id_ref=STYLE["title"])
     if data.get("learning_goal"):
         doc.add_paragraph(f"학습 목표: {data['learning_goal']}", char_pr_id_ref=STYLE["goal"])
     doc.add_paragraph("")
 
     for act in data.get("activities", []):
-        header = f"{act.get('label', '')}({act.get('stage', '')}). {act.get('instruction', '')}"
-        doc.add_paragraph(header, char_pr_id_ref=STYLE["activity"])
+        head = f"{act.get('label', '')}({act.get('stage', '')}). {act.get('instruction', '')}"
+        doc.add_paragraph(head, char_pr_id_ref=STYLE["activity"])
 
         for passage in act.get("passages", []):
             render_passage(doc, passage)
@@ -78,7 +121,7 @@ def render(doc: HwpxDocument, data: dict) -> None:
         for q in act.get("questions", []):
             doc.add_paragraph(f"{q.get('id', '')}. {q.get('text', '')}", char_pr_id_ref=STYLE["question"])
             if q.get("answer_box"):
-                doc.add_table(1, 1, border_fill_id_ref=STYLE["box_border"]).set_cell_text(0, 0, "")
+                render_answer_box(doc)
         doc.add_paragraph("")
 
 
@@ -92,7 +135,6 @@ def main() -> None:
     doc = HwpxDocument.open(str(donor_path))
     clear_body(doc)
     render(doc, data)
-    drop_leading_blank(doc)
     doc.save_to_path(str(out_path))
 
     HwpxDocument.open(str(out_path)).validate()
