@@ -120,6 +120,9 @@ def render_passage(doc: HwpxDocument, passage: dict) -> None:
     table.set_cell_text(0, 0, first_text)
     p0 = cell.paragraphs[0]
     p0.element.set("paraPrIDRef", str(first_para))
+    for run in p0.element:
+        if run.tag.split("}")[-1] == "run":
+            run.set("charPrIDRef", str(first_char))
     for text, para, char in lines[1:]:
         cell.add_paragraph(text, para_pr_id_ref=para, char_pr_id_ref=char)
     set_cell_margin(cell)
