@@ -54,16 +54,22 @@ def create_picture_element(
     if org_h is None:
         org_h = cur_h
 
+    # 실제 작동하는 SimplePicture.hwpx 구조를 그대로 따른다:
+    #   offset / orgSz / curSz / flip / rotationInfo / renderingInfo
+    #   imgRect / imgClip / inMargin / imgDim / hc:img / effects
+    #   sz / pos / outMargin
+    # ※ lineShape, 최상위 shadow는 hp:pic 자식이 아니며, 추가하면 한글이
+    #   그림을 그리지 못하고 깨진 아이콘만 표시한다.
     pic = ET.Element(
         f"{_HP}pic",
         {
-            "id": inst_id, "zOrder": "0", "numberingType": "NONE",
+            "id": inst_id, "zOrder": "0", "numberingType": "PICTURE",
             "lock": "0", "dropcapstyle": "None", "href": "",
             "groupLevel": "0", "instid": inst_id, "reverse": "0",
         },
     )
 
-    # 1) AbstractShapeComponentType 자식 (rect 빌더와 동일 패턴)
+    # AbstractShapeComponentType 자식
     _sub(pic, f"{_HP}offset", {"x": "0", "y": "0"})
     _sub(pic, f"{_HP}orgSz", {"width": str(org_w), "height": str(org_h)})
     _sub(pic, f"{_HP}curSz", {"width": str(cur_w), "height": str(cur_h)})
@@ -77,20 +83,7 @@ def create_picture_element(
     _sub(ri, f"{_HC}scaMatrix", _IDENTITY)
     _sub(ri, f"{_HC}rotMatrix", _IDENTITY)
 
-    # 2) AbstractDrawingObjectType 자식 (lineShape, shadow)
-    _sub(pic, f"{_HP}lineShape", {
-        "color": "#000000", "width": "0", "style": "NONE", "endCap": "FLAT",
-        "headStyle": "NORMAL", "tailStyle": "NORMAL",
-        "headfill": "FILLED", "tailfill": "FILLED",
-        "headSz": "NORMAL", "tailSz": "NORMAL",
-        "outlineStyle": "NORMAL", "alpha": "0",
-    })
-    _sub(pic, f"{_HP}shadow", {
-        "type": "NONE", "color": "#B2B2B2",
-        "offsetX": "0", "offsetY": "0", "alpha": "0",
-    })
-
-    # 3) PIC-specific 자식 (imgRect/imgClip/inMargin/imgDim/img/effects)
+    # PIC-specific 자식
     rect = _sub(pic, f"{_HP}imgRect")
     _sub(rect, f"{_HC}pt0", {"x": "0", "y": "0"})
     _sub(rect, f"{_HC}pt1", {"x": str(cur_w), "y": "0"})
@@ -142,31 +135,47 @@ def add_picture_to_paragraph(
     max_w_hwpu = mm_to_hwpu(max_width_mm)
     cur_w, cur_h = fit_to_width(org_w_hwpu, org_h_hwpu, max_w_hwpu)
 
-    # 3) 바이너리 등록 -> 매니페스트 아이디(BIN####)
+    # 3) 바이너리 등록. add_image()는 매니페스트 아이디(예: "BIN0001")를 돌려준다.
+    #    실제 작동 샘플(SimplePicture.hwpx)에서 <hc:img binaryItemIDRef>는
+    #    매니페스트 <opf:item id>를 가리킨다(헤더의 binItem id가 아님).
     manifest_id = document.add_image(image_bytes, image_format)
 
-    # 4) <hc:img binaryItemIDRef>가 가리킬 것은 매니페스트 id가 아니라
-    #    헤더 <hh:binItem id>(별도 정수 시퀀스). 파일명으로 매칭해 id를 얻는다.
+    # 워킹 샘플(SimplePicture.hwpx)에 맞춰 두 가지 후처리:
+    #  a) 매니페스트 opf:item 에 isEmbeded="1" 부여(누락 시 한글이 그림을 못 그림)
+    #  b) add_image()가 추가한 헤더 <hh:binItem> 항목 제거(워킹 샘플엔 없음)
     fmt = image_format.lower().lstrip(".")
     bin_filename = f"{manifest_id}.{fmt}"
-    bin_id_ref = manifest_id  # 안전 기본값
-    headers = getattr(document, "_root", None) and document._root.headers
-    if headers:
-        for bi in headers[0].list_bin_items():
-            if bi.get("BinData") == bin_filename:
-                bin_id_ref = bi.get("id", manifest_id)
+    try:
+        pkg = document._package
+        manifest_el = pkg._manifest_element()
+        opf_ns = "http://www.idpf.org/2007/opf/"
+        for it in manifest_el.findall(f"{{{opf_ns}}}item"):
+            if it.get("id") == manifest_id:
+                it.set("isEmbeded", "1")
                 break
+        pkg._persist_manifest()
+    except Exception:
+        pass
+    try:
+        headers = document._root.headers
+        if headers:
+            for bi in list(headers[0].list_bin_items()):
+                if bi.get("BinData") == bin_filename:
+                    headers[0].remove_bin_item(bi.get("id"))
+                    break
+    except Exception:
+        pass
 
-    # 5) inst-id는 단순 정수형(고유). 패키지 내 다른 객체 id와 안 겹치도록 큰 값 사용.
+    # 4) inst-id는 고유한 큰 정수. 다른 객체 id와 안 겹치게.
     import random
     inst_id = str(random.randint(100_000_000, 999_999_999))
 
-    # 6) <hp:pic> 요소 생성 후 단락에 인라인 객체로 부착
+    # 5) <hp:pic> 요소를 만들어 단락에 인라인 객체로 부착
     pic_el = create_picture_element(
         cur_w, cur_h,
         org_w=org_w_hwpu, org_h=org_h_hwpu,
-        bin_id_ref=bin_id_ref, inst_id=inst_id,
+        bin_id_ref=manifest_id, inst_id=inst_id,
         treat_as_char=treat_as_char,
     )
     paragraph._insert_shape_element(pic_el)
-    return bin_id_ref, (cur_w, cur_h)
+    return manifest_id, (cur_w, cur_h)
