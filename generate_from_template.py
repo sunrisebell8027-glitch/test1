@@ -30,7 +30,9 @@
 <지문> = {
   "title": str | null,         # 지문 제목 (가운데, 본문+1pt)
   "body": [str, ...],          # 문단 목록
-  "images": [ {"path": str, "caption": str} ],  # 이미지(캡션은 가운데). 삽입은 4단계
+  "images": [ {"path"|"url"|"data"(base64): str, "format"?: "png|jpg", "caption"?: str} ],
+                               # 이미지: 박스 폭에 맞춰 자동 축소(가로 최대 120mm).
+                               # path=로컬파일 / url=다운로드 / data=base64 인코딩 바이트
   "footnotes": [str, ...],     # 각주. "• " 접두가 자동으로 붙음
   "source": str | null         # 출처/안내 (지문 마지막 줄)
 }
@@ -57,6 +59,8 @@ import sys
 from pathlib import Path
 
 from hwpx import HwpxDocument
+
+import hwpx_picture
 
 # 골든샘플에서 추출한 디자인 토큰. 다른 양식을 원본으로 쓰면 이 값만 맞추면 된다.
 STYLE = {
@@ -194,37 +198,80 @@ def set_cell_margin(cell) -> None:
             return
 
 
-def render_passage(doc: HwpxDocument, passage: dict) -> None:
-    """지문을 1x1 박스에 제목(가운데)+본문/각주/출처(양쪽정렬) 순으로 넣는다."""
-    lines: list[tuple[str, int, int]] = []
-    if passage.get("title"):
-        lines.append((passage["title"], STYLE["passage_title_para"], STYLE["passage_title_char"]))
-    for body in passage.get("body", []):
-        lines.append((body, STYLE["passage_body_para"], STYLE["passage_body_char"]))
-    # 이미지 캡션(가운데). 실제 이미지 삽입은 4단계에서 처리.
-    for img in passage.get("images", []) or []:
-        caption = img.get("caption")
-        if caption:
-            lines.append((caption, STYLE["passage_title_para"], STYLE["passage_body_char"]))
-    for fn in passage.get("footnotes", []):
-        lines.append(("• " + fn, STYLE["passage_body_para"], STYLE["passage_body_char"]))
-    if passage.get("source"):
-        lines.append((passage["source"], STYLE["passage_body_para"], STYLE["passage_body_char"]))
-    if not lines:
-        lines = [("", STYLE["passage_body_para"], STYLE["passage_body_char"])]
+def _load_image(img: dict) -> tuple[bytes, str] | tuple[None, None]:
+    """이미지 dict에서 바이트와 확장자(png/jpg)를 얻는다."""
+    import base64
+    if "path" in img:
+        p = Path(img["path"])
+        if not p.exists():
+            return None, None
+        return p.read_bytes(), (img.get("format") or p.suffix.lstrip(".").lower() or "png")
+    if "data" in img:
+        return base64.b64decode(img["data"]), (img.get("format") or "png")
+    if "url" in img:
+        from urllib.request import Request, urlopen
+        req = Request(img["url"], headers={"User-Agent": "hwpx-worksheet/1.0"})
+        with urlopen(req, timeout=15) as r:
+            data = r.read()
+        fmt = img.get("format")
+        if not fmt:
+            url = img["url"].lower().split("?", 1)[0]
+            fmt = next((e for e in ("png", "jpg", "jpeg", "gif", "bmp") if url.endswith("." + e)), "png")
+        return data, ("jpg" if fmt == "jpeg" else fmt)
+    return None, None
 
+
+def render_passage(doc: HwpxDocument, passage: dict) -> None:
+    """지문을 1x1 박스에 제목(가운데)+본문/이미지/각주/출처 순으로 채운다."""
     table = doc.add_table(1, 1, width=STYLE["box_width"], border_fill_id_ref=STYLE["box_border"])
     cell = table.cell(0, 0)
-    first_text, first_para, first_char = lines[0]
-    table.set_cell_text(0, 0, first_text)
-    p0 = cell.paragraphs[0]
-    p0.element.set("paraPrIDRef", str(first_para))
-    for run in p0.element:
-        if run.tag.split("}")[-1] == "run":
-            run.set("charPrIDRef", str(first_char))
-    for text, para, char in lines[1:]:
-        cell.add_paragraph(text, para_pr_id_ref=para, char_pr_id_ref=char)
     set_cell_margin(cell)
+    first_written = False
+
+    def _set_first(text: str, para: int, char: int) -> object:
+        nonlocal first_written
+        table.set_cell_text(0, 0, text)
+        p = cell.paragraphs[0]
+        p.element.set("paraPrIDRef", str(para))
+        for run in p.element:
+            if run.tag.split("}")[-1] == "run":
+                run.set("charPrIDRef", str(char))
+        first_written = True
+        return p
+
+    def add_text(text: str, para: int, char: int) -> None:
+        if not first_written:
+            _set_first(text, para, char)
+        else:
+            cell.add_paragraph(text, para_pr_id_ref=para, char_pr_id_ref=char)
+
+    def add_picture(img_bytes: bytes, img_fmt: str) -> None:
+        if not first_written:
+            p = _set_first("", STYLE["passage_title_para"], STYLE["passage_body_char"])
+        else:
+            p = cell.add_paragraph(
+                "",
+                para_pr_id_ref=STYLE["passage_title_para"],
+                char_pr_id_ref=STYLE["passage_body_char"],
+            )
+        hwpx_picture.add_picture_to_paragraph(doc, p, img_bytes, img_fmt, max_width_mm=120)
+
+    if passage.get("title"):
+        add_text(passage["title"], STYLE["passage_title_para"], STYLE["passage_title_char"])
+    for body in passage.get("body", []):
+        add_text(body, STYLE["passage_body_para"], STYLE["passage_body_char"])
+    for img in passage.get("images", []) or []:
+        data, fmt = _load_image(img)
+        if data and fmt:
+            add_picture(data, fmt)
+        if img.get("caption"):
+            add_text(img["caption"], STYLE["passage_title_para"], STYLE["passage_body_char"])
+    for fn in passage.get("footnotes", []):
+        add_text("• " + fn, STYLE["passage_body_para"], STYLE["passage_body_char"])
+    if passage.get("source"):
+        add_text(passage["source"], STYLE["passage_body_para"], STYLE["passage_body_char"])
+    if not first_written:
+        add_text("", STYLE["passage_body_para"], STYLE["passage_body_char"])
 
 
 def render_answer_box(doc: HwpxDocument, height: int | None = None) -> None:

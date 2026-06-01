@@ -13,6 +13,9 @@
 - `QN. 질문`               → 문항.  예) `Q1. 위의 글을 뭐라고 부를까요?`
 -   질문 끝에 `#답안`        → 빈 답안 박스 표시
 -   질문 '뒤'의 `###`+`>` 박스 → 그 문항에 딸린 지문 박스(예: Q7 고쳐쓰기)
+- `![캡션](이미지URL)`       → 지문 박스 안 그림. `> ![](url)` 으로 지문 안에 두거나,
+                              `###` 박스 안 어디든 단독 줄로 둘 수 있다.
+                              박스 폭에 맞춰 자동 축소(가로 최대 120mm).
 
 같은 활동 안에서 첫 질문 '앞'에 나온 박스는 활동 지문, 질문 '뒤'에 나온 박스는
 그 질문의 부속 박스로 분류된다.
@@ -32,6 +35,8 @@ from pathlib import Path
 
 Q_RE = re.compile(r"Q\d+\.")
 ACT_RE = re.compile(r"##\s*(.+?)\((\w+)\)\.\s*(.*)")
+# 표준 마크다운 이미지:  ![alt](url)  또는  ![alt](url "캡션")
+IMG_RE = re.compile(r'!\[(?P<alt>[^\]]*)\]\((?P<url>\S+?)(?:\s+"(?P<cap>[^"]*)")?\)')
 
 
 def extract(fetched: str) -> tuple[str, str]:
@@ -108,8 +113,22 @@ def parse_markdown(md: str, title: str = "") -> dict:
                 passage["footnotes"].append(content[1:].strip())
             elif content.startswith("출처"):
                 passage["source"] = content
+            elif (m := IMG_RE.fullmatch(content)):
+                passage["images"].append({
+                    "url": m.group("url"),
+                    "caption": (m.group("cap") or m.group("alt") or "").strip() or None,
+                })
             else:
                 passage["body"].append(content)
+        elif (m := IMG_RE.fullmatch(s)):
+            # 인용블록 밖의 이미지: 진행 중 지문에 붙이고, 없으면 새 지문(제목 없음)으로 시작
+            if passage is None:
+                passage = _new_passage(None)
+                target = ("question", last_q) if last_q is not None else ("activity", None)
+            passage["images"].append({
+                "url": m.group("url"),
+                "caption": (m.group("cap") or m.group("alt") or "").strip() or None,
+            })
         elif Q_RE.match(s):
             flush()
             text, answer_box = s, False
