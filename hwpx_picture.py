@@ -143,18 +143,30 @@ def add_picture_to_paragraph(
     cur_w, cur_h = fit_to_width(org_w_hwpu, org_h_hwpu, max_w_hwpu)
 
     # 3) 바이너리 등록 -> 매니페스트 아이디(BIN####)
-    bin_id = document.add_image(image_bytes, image_format)
+    manifest_id = document.add_image(image_bytes, image_format)
 
-    # 4) inst-id는 단순 정수형(고유). 패키지 내 다른 객체 id와 안 겹치도록 큰 값 사용.
+    # 4) <hc:img binaryItemIDRef>가 가리킬 것은 매니페스트 id가 아니라
+    #    헤더 <hh:binItem id>(별도 정수 시퀀스). 파일명으로 매칭해 id를 얻는다.
+    fmt = image_format.lower().lstrip(".")
+    bin_filename = f"{manifest_id}.{fmt}"
+    bin_id_ref = manifest_id  # 안전 기본값
+    headers = getattr(document, "_root", None) and document._root.headers
+    if headers:
+        for bi in headers[0].list_bin_items():
+            if bi.get("BinData") == bin_filename:
+                bin_id_ref = bi.get("id", manifest_id)
+                break
+
+    # 5) inst-id는 단순 정수형(고유). 패키지 내 다른 객체 id와 안 겹치도록 큰 값 사용.
     import random
     inst_id = str(random.randint(100_000_000, 999_999_999))
 
-    # 5) <hp:pic> 요소 생성 후 단락에 인라인 객체로 부착
+    # 6) <hp:pic> 요소 생성 후 단락에 인라인 객체로 부착
     pic_el = create_picture_element(
         cur_w, cur_h,
         org_w=org_w_hwpu, org_h=org_h_hwpu,
-        bin_id_ref=bin_id, inst_id=inst_id,
+        bin_id_ref=bin_id_ref, inst_id=inst_id,
         treat_as_char=treat_as_char,
     )
     paragraph._insert_shape_element(pic_el)
-    return bin_id, (cur_w, cur_h)
+    return bin_id_ref, (cur_w, cur_h)
