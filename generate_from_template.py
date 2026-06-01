@@ -201,9 +201,9 @@ def set_cell_margin(cell) -> None:
 def _load_image(img: dict) -> tuple[bytes, str] | tuple[None, None]:
     """이미지 dict에서 바이트와 확장자(png/jpg)를 얻는다."""
     import base64
-    if "path" in img:
+    if img.get("path"):
         p = Path(img["path"])
-        if not p.exists():
+        if not p.is_file():
             return None, None
         return p.read_bytes(), (img.get("format") or p.suffix.lstrip(".").lower() or "png")
     if "data" in img:
