@@ -85,17 +85,18 @@ def create_picture_element(
 
     # PIC-specific 자식
     # imgRect : 표시 사각형의 4꼭짓점(curSz 기준)
-    # imgClip : 원본 이미지에서 잘라낼 영역(없음 = (0,0,orgSz)). (0,0,0,0)이면
-    #           한글이 "보여줄 영역 0×0"으로 해석해 이미지가 거의 안 그려진다.
-    # imgDim  : 원본 이미지 영역 크기(HWPU; 픽셀×75 정도)
+    # imgDim  : 이미지가 렌더링되는 영역 크기(표시 크기 = curSz)
+    # imgClip : imgDim 안에서 보여줄 부분(클립 없음 = (0,0,imgDim))
+    #           (0,0,0,0)이면 한글이 "보여줄 영역 0×0"으로 해석해 이미지가
+    #           매우 작게 그려지고 sz 만큼의 빈 박스가 남는다.
     rect = _sub(pic, f"{_HP}imgRect")
     _sub(rect, f"{_HC}pt0", {"x": "0", "y": "0"})
     _sub(rect, f"{_HC}pt1", {"x": str(cur_w), "y": "0"})
     _sub(rect, f"{_HC}pt2", {"x": str(cur_w), "y": str(cur_h)})
     _sub(rect, f"{_HC}pt3", {"x": "0", "y": str(cur_h)})
-    _sub(pic, f"{_HP}imgClip", {"left": "0", "right": str(org_w), "top": "0", "bottom": str(org_h)})
+    _sub(pic, f"{_HP}imgClip", {"left": "0", "right": str(cur_w), "top": "0", "bottom": str(cur_h)})
     _sub(pic, f"{_HP}inMargin", {"left": "0", "right": "0", "top": "0", "bottom": "0"})
-    _sub(pic, f"{_HP}imgDim", {"dimwidth": str(org_w), "dimheight": str(org_h)})
+    _sub(pic, f"{_HP}imgDim", {"dimwidth": str(cur_w), "dimheight": str(cur_h)})
     _sub(pic, f"{_HC}img", {
         "binaryItemIDRef": bin_id_ref,
         "bright": "0", "contrast": "0", "effect": "REAL_PIC", "alpha": "0",
